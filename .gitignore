@@ -1,3 +1,6 @@
 # ignore PyCharm settings directory
 .idea
 
+# ignore python virtual environment
+.venv
+
