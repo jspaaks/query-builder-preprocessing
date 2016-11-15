@@ -10,12 +10,21 @@ def parse_node(node, cursor, parent_id=None):
         this function recursively calls itself on its instances or children, if there are any.
     """
 
+    def isexpandable():
+        if 'instance_count' in node.keys() and node['instance_count'] > 0:
+            return True
+        elif 'children' in node.keys() and len(node['children']) > 0:
+            return True
+        else:
+            return False
+
     if 'type' in node.keys():
         # node is an entity
 
         child_of = parent_id
         is_entity = True
         is_instance = False
+        is_expandable = isexpandable()
         if 'mention_count' in node.keys():
             mention_count = node['mention_count']
         else:
@@ -24,8 +33,8 @@ def parse_node(node, cursor, parent_id=None):
         url = node['url']
 
         cursor.execute('INSERT INTO nodes ' +
-                       '(child_of,is_entity,is_instance,mention_count,name,url) VALUES (?,?,?,?,?,?)',
-                       (child_of, is_entity, is_instance, mention_count, name, url))
+                       '(child_of,is_entity,is_expandable,is_instance,mention_count,name,url) VALUES (?,?,?,?,?,?,?)',
+                       (child_of, is_entity, is_expandable, is_instance, mention_count, name, url))
 
         if 'children' in node.keys():
             num_children = len(node['children'])
@@ -48,6 +57,7 @@ def parse_node(node, cursor, parent_id=None):
         child_of = parent_id
         is_entity = False
         is_instance = True
+        is_expandable = isexpandable()
         if 'mention_count' in node.keys():
             mention_count = node['mention_count']
         else:
@@ -56,8 +66,8 @@ def parse_node(node, cursor, parent_id=None):
         url = node['url']
 
         cursor.execute('INSERT INTO nodes ' +
-                       '(child_of,is_entity,is_instance,mention_count,name,url) VALUES (?,?,?,?,?,?)',
-                       (child_of, is_entity, is_instance, mention_count, name, url))
+                       '(child_of,is_entity,is_expandable,is_instance,mention_count,name,url) VALUES (?,?,?,?,?,?,?)',
+                       (child_of, is_entity, is_expandable, is_instance, mention_count, name, url))
 
         return None
 
@@ -78,6 +88,7 @@ def run(input_json, db_name):
             child_of integer,
             id integer primary key autoincrement,
             is_entity integer not null,
+            is_expandable integer not null,
             is_instance integer not null,
             mention_count integer not null,
             name text not null,
