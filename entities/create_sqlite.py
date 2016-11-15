@@ -6,28 +6,59 @@ import sqlite3
 
 
 def parse_node(node, cursor, parent_id=None):
+    """
+        this function recursively calls itself on its instances or children, if there are any.
+    """
+
     if 'type' in node.keys():
-        # entity
-        num_children = len(node['children']) if 'children' in node.keys() else 0
-        cursor.execute('INSERT INTO entities ' +
-                       '(url,name,mention_count,children_count,instance_count,parent_id) VALUES (?,?,?,?,?,?)',
-                       (node['url'], node['name'], node['mention_count'], num_children, node['instance_count'],
-                        parent_id))
+        # node is an entity
+
+        child_of = parent_id
+        is_entity = True
+        is_instance = False
+        if 'mention_count' in node.keys():
+            mention_count = node['mention_count']
+        else:
+            mention_count = 0
+        name = node['name']
+        url = node['url']
+
+        cursor.execute('INSERT INTO nodes ' +
+                       '(child_of,is_entity,is_instance,mention_count,name,url) VALUES (?,?,?,?,?,?)',
+                       (child_of, is_entity, is_instance, mention_count, name, url))
+
+        if 'children' in node.keys():
+            num_children = len(node['children'])
+        else:
+            num_children = 0
 
         entity_id = cursor.lastrowid
-        if node['instance_count']:
+        if node['instance_count'] > 0:
             # It has instances
             for instance in node['instances']:
                 parse_node(instance, cursor, entity_id)
 
-        if num_children:
+        if num_children > 0:
             for child in node['children']:
                 parse_node(child, cursor, entity_id)
         return None
     else:
-        # instance
-        cursor.execute('INSERT INTO instances (url,name,mention_count,entity_id) VALUES (?,?,?,?)',
-                       (node['url'], node['name'], node['mention_count'], parent_id))
+        # node is an instance
+
+        child_of = parent_id
+        is_entity = False
+        is_instance = True
+        if 'mention_count' in node.keys():
+            mention_count = node['mention_count']
+        else:
+            mention_count = 0
+        name = node['name']
+        url = node['url']
+
+        cursor.execute('INSERT INTO nodes ' +
+                       '(child_of,is_entity,is_instance,mention_count,name,url) VALUES (?,?,?,?,?,?)',
+                       (child_of, is_entity, is_instance, mention_count, name, url))
+
         return None
 
 
@@ -42,30 +73,20 @@ def run(input_json, db_name):
 
     c = conn.cursor()
 
-    c.execute("""CREATE TABLE entities (
-                   id integer primary key autoincrement,
-                   url text not null,
-                   name text not null,
-                   mention_count integer not null,
-                   children_count integer not null,
-                   instance_count integer not null,
-                   parent_id integer,
-                   FOREIGN KEY(parent_id) REFERENCES entities(id))""")
-
-    c.execute("""CREATE TABLE instances (
-                   id integer primary key autoincrement,
-                   url text not null,
-                   name text not null,
-                   mention_count integer not null,
-                   entity_id integer not null,
-                   FOREIGN KEY(entity_id) REFERENCES entities(id))""")
+    c.execute("""
+        CREATE TABLE nodes (
+            child_of integer,
+            id integer primary key autoincrement,
+            is_entity integer not null,
+            is_instance integer not null,
+            mention_count integer not null,
+            name text not null,
+            url text not null)
+            """)
 
     with open(input_json) as jsonFile:
         data = json.load(jsonFile)
         parse_node(data['children'][0], c)
-
-    c.execute("CREATE INDEX entities_name ON entities (name)")
-    c.execute("CREATE INDEX instances_name ON instances (name)")
 
     conn.commit()
 
