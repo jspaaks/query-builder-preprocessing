@@ -1,65 +1,92 @@
- #!/usr/bin/python
-import argparse, os, json
+#!/usr/bin/python
+import argparse
+import os
+import json
 import sqlite3
 
-def parseNode(node, cursor, parentId = None):
-    if 'type' in node.keys():
-        # entity
-        numChildren = len(node['children']) if 'children' in node.keys() else 0
-        cursor.execute('INSERT INTO entities (url,name,mention_count,children_count,instance_count,parent_id) VALUES (?,?,?,?,?,?)',
-        (node['url'], node['name'], node['mention_count'], numChildren, node['instance_count'], parentId))
 
-        entityId = cursor.lastrowid
-        if node['instance_count']:
+def parse_node(node, cursor, parent_id=None):
+    """
+        this function recursively calls itself on its instances or children, if there are any.
+    """
+
+    if 'type' in node.keys():
+        # node is an entity
+
+        child_of = parent_id
+        is_entity = True
+        is_instance = False
+        if 'mention_count' in node.keys():
+            mention_count = node['mention_count']
+        else:
+            mention_count = 0
+        name = node['name']
+        url = node['url']
+
+        cursor.execute('INSERT INTO nodes ' +
+                       '(child_of,is_entity,is_instance,mention_count,name,url) VALUES (?,?,?,?,?,?)',
+                       (child_of, is_entity, is_instance, mention_count, name, url))
+
+        if 'children' in node.keys():
+            num_children = len(node['children'])
+        else:
+            num_children = 0
+
+        entity_id = cursor.lastrowid
+        if node['instance_count'] > 0:
             # It has instances
             for instance in node['instances']:
-                parseNode(instance, cursor, entityId)
+                parse_node(instance, cursor, entity_id)
 
-        if numChildren:
+        if num_children > 0:
             for child in node['children']:
-                parseNode(child, cursor, entityId)
-        return
+                parse_node(child, cursor, entity_id)
+        return None
     else:
-        # instance
-        cursor.execute('INSERT INTO instances (url,name,mention_count,entity_id) VALUES (?,?,?,?)',
-        (node['url'], node['name'], node['mention_count'], parentId))
-        return
+        # node is an instance
 
-def run(inputJSON, dbName):
-    if not os.path.isfile(inputJSON):
-        raise Exception('File not found: ' + inputJSON)
+        child_of = parent_id
+        is_entity = False
+        is_instance = True
+        if 'mention_count' in node.keys():
+            mention_count = node['mention_count']
+        else:
+            mention_count = 0
+        name = node['name']
+        url = node['url']
 
-    if not dbName.endswith('.db'):
+        cursor.execute('INSERT INTO nodes ' +
+                       '(child_of,is_entity,is_instance,mention_count,name,url) VALUES (?,?,?,?,?,?)',
+                       (child_of, is_entity, is_instance, mention_count, name, url))
+
+        return None
+
+
+def run(input_json, db_name):
+    if not os.path.isfile(input_json):
+        raise Exception('File not found: ' + input_json)
+
+    if not db_name.endswith('.db'):
         raise Exception('DB name must end with .db')
 
-    conn = sqlite3.connect(dbName)
+    conn = sqlite3.connect(db_name)
 
     c = conn.cursor()
 
-    c.execute("""CREATE TABLE entities (
-                   id integer primary key autoincrement,
-                   url text not null,
-                   name text not null,
-                   mention_count integer not null,
-                   children_count integer not null,
-                   instance_count integer not null,
-                   parent_id integer,
-                   FOREIGN KEY(parent_id) REFERENCES entities(id))""")
+    c.execute("""
+        CREATE TABLE nodes (
+            child_of integer,
+            id integer primary key autoincrement,
+            is_entity integer not null,
+            is_instance integer not null,
+            mention_count integer not null,
+            name text not null,
+            url text not null)
+            """)
 
-    c.execute("""CREATE TABLE instances (
-                   id integer primary key autoincrement,
-                   url text not null,
-                   name text not null,
-                   mention_count integer not null,
-                   entity_id integer not null,
-                   FOREIGN KEY(entity_id) REFERENCES entities(id))""")
-
-    with open(inputJSON) as jsonFile:
+    with open(input_json) as jsonFile:
         data = json.load(jsonFile)
-        parseNode(data['children'][0], c)
-
-    c.execute("CREATE INDEX entities_name ON entities (name)")
-    c.execute("CREATE INDEX instances_name ON instances (name)")
+        parse_node(data['children'][0], c)
 
     conn.commit()
 
@@ -67,12 +94,13 @@ def run(inputJSON, dbName):
 
 
 def argument_parser():
-   # define argument menu
+    # define argument menu
     description = "Creates a SQLite DB database file from a StoryTeller JSON file"
     parser = argparse.ArgumentParser(description=description)
-    parser.add_argument('-i', '--input',default='', help='Input JSON file', type=str, required=True)
-    parser.add_argument('-n', '--name',default='', help='DB name (must end with .db)', type=str, required=True)
+    parser.add_argument('-i', '--input', default='', help='Input JSON file', type=str, required=True)
+    parser.add_argument('-n', '--name', default='', help='DB name (must end with .db)', type=str, required=True)
     return parser
+
 
 def main():
     try:
