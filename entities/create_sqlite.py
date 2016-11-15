@@ -1,38 +1,44 @@
- #!/usr/bin/python
-import argparse, os, json
+#!/usr/bin/python
+import argparse
+import os
+import json
 import sqlite3
 
-def parseNode(node, cursor, parentId = None):
+
+def parse_node(node, cursor, parent_id=None):
     if 'type' in node.keys():
         # entity
-        numChildren = len(node['children']) if 'children' in node.keys() else 0
-        cursor.execute('INSERT INTO entities (url,name,mention_count,children_count,instance_count,parent_id) VALUES (?,?,?,?,?,?)',
-        (node['url'], node['name'], node['mention_count'], numChildren, node['instance_count'], parentId))
+        num_children = len(node['children']) if 'children' in node.keys() else 0
+        cursor.execute('INSERT INTO entities ' +
+                       '(url,name,mention_count,children_count,instance_count,parent_id) VALUES (?,?,?,?,?,?)',
+                       (node['url'], node['name'], node['mention_count'], num_children, node['instance_count'],
+                        parent_id))
 
-        entityId = cursor.lastrowid
+        entity_id = cursor.lastrowid
         if node['instance_count']:
             # It has instances
             for instance in node['instances']:
-                parseNode(instance, cursor, entityId)
+                parse_node(instance, cursor, entity_id)
 
-        if numChildren:
+        if num_children:
             for child in node['children']:
-                parseNode(child, cursor, entityId)
-        return
+                parse_node(child, cursor, entity_id)
+        return None
     else:
         # instance
         cursor.execute('INSERT INTO instances (url,name,mention_count,entity_id) VALUES (?,?,?,?)',
-        (node['url'], node['name'], node['mention_count'], parentId))
-        return
+                       (node['url'], node['name'], node['mention_count'], parent_id))
+        return None
 
-def run(inputJSON, dbName):
-    if not os.path.isfile(inputJSON):
-        raise Exception('File not found: ' + inputJSON)
 
-    if not dbName.endswith('.db'):
+def run(input_json, db_name):
+    if not os.path.isfile(input_json):
+        raise Exception('File not found: ' + input_json)
+
+    if not db_name.endswith('.db'):
         raise Exception('DB name must end with .db')
 
-    conn = sqlite3.connect(dbName)
+    conn = sqlite3.connect(db_name)
 
     c = conn.cursor()
 
@@ -54,9 +60,9 @@ def run(inputJSON, dbName):
                    entity_id integer not null,
                    FOREIGN KEY(entity_id) REFERENCES entities(id))""")
 
-    with open(inputJSON) as jsonFile:
+    with open(input_json) as jsonFile:
         data = json.load(jsonFile)
-        parseNode(data['children'][0], c)
+        parse_node(data['children'][0], c)
 
     c.execute("CREATE INDEX entities_name ON entities (name)")
     c.execute("CREATE INDEX instances_name ON instances (name)")
@@ -67,12 +73,13 @@ def run(inputJSON, dbName):
 
 
 def argument_parser():
-   # define argument menu
+    # define argument menu
     description = "Creates a SQLite DB database file from a StoryTeller JSON file"
     parser = argparse.ArgumentParser(description=description)
-    parser.add_argument('-i', '--input',default='', help='Input JSON file', type=str, required=True)
-    parser.add_argument('-n', '--name',default='', help='DB name (must end with .db)', type=str, required=True)
+    parser.add_argument('-i', '--input', default='', help='Input JSON file', type=str, required=True)
+    parser.add_argument('-n', '--name', default='', help='DB name (must end with .db)', type=str, required=True)
     return parser
+
 
 def main():
     try:
